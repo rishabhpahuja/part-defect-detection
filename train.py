@@ -4,11 +4,12 @@ from loss import DefectSegmentationLoss
 import wandb
 import numpy as np
 from PIL import Image as PILImage
+from tqdm import tqdm
 
 def train(data_loader: DataLoader, model:torch.nn.Module, 
             criterion:DefectSegmentationLoss,
             optimizer:torch.optim.Optimizer, device:str,
-            logger:wandb, cfg:dict)->float:
+            cfg:dict, epoch:int, logger:wandb = None)->float:
 
     '''
     Trains the model for one epoch
@@ -18,6 +19,9 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
         criterion: Loss function
         optimizer: Optimizer for updating model weights
         device: Device to run the training on (CPU or GPU)
+        cfg: Configuration dictionary
+        epoch: Current epoch number
+        logger: Wandb logger for logging metrics (optional)
     Returns:
         Average loss for the epoch
     '''
@@ -25,9 +29,11 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
     model.train()
     running_loss = 0.0
 
-    for images, masks in data_loader:
-        images = images.to(device)
-        masks = masks.to(device)
+    pbar = tqdm(data_loader, desc = f"Train Epoch:{epoch}", unit="batch")
+
+    for i, batch in enumerate(pbar):
+
+        images, masks = batch[0].to(device), batch[1].to(device)
 
         optimizer.zero_grad()
         outputs = model(images)
@@ -36,24 +42,30 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
         optimizer.step()
 
         running_loss += loss.item()
+        
+        pbar.set_postfix({"loss": f"{running_loss/(i+1):.4f}"})
 
     epoch_loss = running_loss / len(data_loader)
     
     if cfg['use_wandb']:
-        logger.log({"train/loss": epoch_loss}, commit=False)
+        logger.log({"epoch":epoch, "train/loss": epoch_loss}, commit=False)
 
     return epoch_loss
 
 def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
-            criterion:DefectSegmentationLoss, device:str, cfg: dict)->float:
+            criterion:DefectSegmentationLoss, device:str, cfg: dict,
+            epoch: int)->float:
 
     '''
     Validates the model for one epoch
     Args:
         data_loader: DataLoader for validation data
         model: The neural network model
+        logger: Wandb logger for logging metrics
         criterion: Loss function
         device: Device to run the validation on (CPU or GPU)
+        cfg: Configuration dictionary
+        epoch: Current epoch number
     Returns:
         Average loss for the epoch
     '''
@@ -62,15 +74,19 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
     running_loss = 0.0
     logged_batch = False
 
+    pbar = tqdm(data_loader, desc = f"Val Epoch:{epoch}", unit="batch")
+
     with torch.no_grad():
-        for images, masks in data_loader:
-            images = images.to(device)
-            masks = masks.to(device)
+        for i, batch in enumerate(data_loader):
+
+            images, masks = batch[0].to(device), batch[1].to(device)
 
             outputs = model(images)
             loss = criterion(outputs, masks)
 
             running_loss += loss.item()
+            
+            pbar.set_postfix({"loss": f"{running_loss/(i+1):.4f}"})
 
             if cfg['use_wandb']:
                 # Log a few validation examples from the 1st batch to wandb
@@ -95,13 +111,13 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
                             wandb.Image(overlay, caption = f"overlay {i}")
                         )
 
-                        logger.log({"val/examples": table}, commit=False)
+                        logger.log({"epoch": epoch, "val/examples": table}, commit=False)
                         logged_batch = True
 
     epoch_loss = running_loss / len(data_loader)
 
     if cfg['use_wandb']:
-        logger.log({"val/loss": epoch_loss}, commit=False)
+        logger.log({"epoch": epoch, "val/loss": epoch_loss}, commit=False)
 
     return epoch_loss
 
