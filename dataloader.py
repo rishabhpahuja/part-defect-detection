@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
-import torchvision
+import matplotlib.pyplot as plt
 from torchvision.tv_tensors import Image, Mask
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import v2 as transforms
@@ -9,7 +9,8 @@ import os
 
 class DefectDataset(Dataset):
     def __init__(self, img_dir: str, num_classes:int = 1,
-                 img_size:int = 640,  train:bool = True, cfg:dict = None):
+                 img_size:int = 640, train:bool = True, 
+                 cfg:dict = None):
 
         '''
         img_dir: Directory containing images and masks (if train=True). e.g. 'data/test/white_bracket'

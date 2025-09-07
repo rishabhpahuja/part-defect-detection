@@ -49,7 +49,7 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
 
     epoch_loss = running_loss / len(data_loader)
     
-    if cfg['use_wandb']:
+    if cfg['wandb']['use_wandb']:
         logger.log({"epoch":epoch, "train/loss": epoch_loss}, commit=False)
 
     return epoch_loss
@@ -90,7 +90,7 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
             
             pbar.set_postfix({"loss": f"{running_loss/(i+1):.4f}"})
 
-            if cfg['use_wandb']:
+            if cfg['wandb']['use_wandb']:
                 # Log a few validation examples from the 1st batch to wandb
                 if not logged_batch:
                     probs = torch.sigmoid(outputs)                 
@@ -118,7 +118,7 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
 
     epoch_loss = running_loss / len(data_loader)
 
-    if cfg['use_wandb']:
+    if cfg['wandb']['use_wandb']:
         logger.log({"epoch": epoch, "val/loss": epoch_loss}, commit=False)
 
     return epoch_loss

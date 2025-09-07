@@ -1,6 +1,6 @@
 import torch
 import pytest
-from model.model import Model
+from model.model import Unet as Model
 
 def test_model_output_shape():
     # Test parameters
