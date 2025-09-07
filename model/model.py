@@ -1,8 +1,7 @@
-import torch
 import torch.nn as nn
 from model.utils import DoubleConv, DownSample, UpSample, OutConv
 
-class Model(nn.Module):
+class Unet(nn.Module):
     def __init__(self, in_channels, num_classes = 1):
         super().__init__()
 
