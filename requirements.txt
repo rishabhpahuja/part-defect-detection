@@ -5,3 +5,4 @@ pyyaml
 wandb
 numpy
 Pillow
+tqdm
