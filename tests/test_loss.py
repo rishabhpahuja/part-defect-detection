@@ -9,10 +9,10 @@ def make_binary_batch(B = 2, H = 32, W = 32):
     """
     Half-left foreground mask, logits_good aligns with targets, logits_bad inverts them minus a scalar.
     """
-    targets = torch.zeros(B, cfg['data'][num_classes], H, W)
+    targets = torch.zeros(B, cfg['data']['num_classes'], H, W)
     targets[:, :, : W // 2] = 1.0
 
-    logits_good = torch.full((B, cfg['data'][num_classes], H, W), -20.0)
+    logits_good = torch.full((B, cfg['data']['num_classes'], H, W), -20.0)
     logits_good[:, :, :, : W // 2] = 20.0
 
     logits_bad = -logits_good - 5.0
@@ -31,8 +31,8 @@ def test_binary_perfect_vs_wrong(loss_type):
 @pytest.mark.parametrize("loss_type", cfg['loss']['loss_types'])
 def test_binary_scalar_and_backward(loss_type):
     B, H, W = 2, 32, 32
-    logits = torch.randn(B, cfg['data'][num_classes], H, W, requires_grad = True)
-    targets = torch.randint(0, 2, (B, cfg['data'][num_classes], H, W))
+    logits = torch.randn(B, cfg['data']['num_classes'], H, W, requires_grad = True)
+    targets = torch.randint(0, 2, (B, cfg['data']['num_classes'], H, W))
 
     crit = DefectSegmentationLoss(loss_directory = cfg['loss']['loss_types'],loss_type = loss_type)
     loss = crit(logits, targets)
