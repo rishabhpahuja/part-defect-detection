@@ -35,7 +35,7 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
     for i, batch in enumerate(pbar):
 
         images, masks = batch[0].to(device), batch[1].to(device)
-
+        # import ipdb; ipdb.set_trace()
         optimizer.zero_grad()
         outputs = model(images)
         loss = criterion(outputs, masks)
@@ -100,7 +100,7 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
 
                     table = wandb.Table(columns=["input", "pred", "overlay"])
                     for i in range(n):
-                        img_np = _denorm_to_uint8(images[i], cfg['mean'], cfg['std'])           # [H,W,3] uint8
+                        img_np = _denorm_to_uint8(images[i], cfg['data']['mean'], cfg['data']['std'])           # [H,W,3] uint8
                         pmask  = (preds[i, 0].detach().cpu().numpy() > 0).astype(np.uint8) * 255
 
                         img_small = _resize_keep_aspect(img_np,  320, is_mask=False)
@@ -113,8 +113,8 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
                             wandb.Image(overlay, caption = f"overlay {i}")
                         )
 
-                        logger.log({"epoch": epoch, "val/examples": table}, commit=False)
-                        logged_batch = True
+                    logger.log({"epoch": epoch, "val/examples": table}, commit=False)
+                    logged_batch = True
 
     epoch_loss = running_loss / len(data_loader)
 
