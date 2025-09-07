@@ -38,14 +38,10 @@ def test_train_updates_params_and_returns_float():
     # snapshot a param
     p0_before = model.conv.weight.detach().clone()
 
-    loss = train(
-        data_loader=loader,
-        model=model,
-        criterion=crit,
-        optimizer=opt,
-        device="cpu",
-        epoch=1,
-        cfg={"use_wandb": False},
+    loss = train(data_loader=loader, model=model, criterion=crit,
+        optimizer=opt, device="cpu",
+        scheduler=torch.optim.lr_scheduler.StepLR(opt, step_size=1),
+        epoch=1, cfg={"use_wandb": False},
     )
 
     assert isinstance(loss, float)
