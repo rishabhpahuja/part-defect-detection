@@ -6,3 +6,4 @@ wandb
 numpy
 Pillow
 tqdm
+matplotlib
