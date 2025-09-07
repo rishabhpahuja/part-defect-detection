@@ -7,7 +7,7 @@ from PIL import Image as PILImage
 from tqdm import tqdm
 
 def train(data_loader: DataLoader, model:torch.nn.Module, 
-            criterion:DefectSegmentationLoss,
+            criterion:DefectSegmentationLoss, scheduler,
             optimizer:torch.optim.Optimizer, device:str,
             cfg:dict, epoch:int, logger:wandb = None)->float:
 
@@ -17,6 +17,7 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
         data_loader: DataLoader for training data
         model: The neural network model
         criterion: Loss function
+        scheduler: Learning rate scheduler
         optimizer: Optimizer for updating model weights
         device: Device to run the training on (CPU or GPU)
         cfg: Configuration dictionary
@@ -40,6 +41,7 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
         loss = criterion(outputs, masks)
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         running_loss += loss.item()
         
