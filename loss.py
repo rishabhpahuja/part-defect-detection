@@ -2,14 +2,12 @@ import torch
 import torch.nn as nn
 import pytest
 
-_ALLOWED = {'DiceLoss'}
-
 class DefectSegmentationLoss(nn.Module):
-    def __init__(self, loss_type = 'DiceLoss'):
+    def __init__(self, loss_directory:list = ['DiceLoss'], loss_type:str = 'DiceLoss'):
         super().__init__()
 
-        if loss_type not in _ALLOWED:
-            raise ValueError(f"loss_type must be one of {_ALLOWED}, got {loss_type!r}")
+        if loss_type not in loss_directory:
+            raise ValueError(f"loss_type must be one of {loss_directory}, got {loss_type!r}")
 
         self.criterion = loss_type
     
@@ -17,8 +15,8 @@ class DefectSegmentationLoss(nn.Module):
         """
         Computes the Dice Loss for binary segmentation.
         Args:
-            pred: Tensor of predictions (batch_size, 1, H, W).
-            target: Tensor of ground truth (batch_size, 1, H, W).
+            pred: Tensor of predictions (batch_size, num_classes, H, W).
+            target: Tensor of ground truth (batch_size, num_classes, H, W).
             smooth: Smoothing factor to avoid division by zero.
         Returns:
             Scalar Dice Loss.
@@ -41,8 +39,8 @@ class DefectSegmentationLoss(nn.Module):
         '''
         Computes the loss between model outputs and ground truth targets.
         Args:
-            outputs: Model predictions (logits) of shape (batch_size, 1, H, W).
-            targets: Ground truth masks of shape (batch_size, 1, H, W).
+            outputs: Model predictions (logits) of shape (batch_size, num_classes, H, W).
+            targets: Ground truth masks of shape (batch_size, num_classes, H, W).
         Returns:
             Computed loss value.
         '''
