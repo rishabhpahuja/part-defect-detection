@@ -8,7 +8,8 @@ import os
 
 
 class DefectDataset(Dataset):
-    def __init__(self, img_dir: str, img_size:int = 640,  train:bool = True):
+    def __init__(self, img_dir: str, num_classes:int = 1,
+                 img_size:int = 640,  train:bool = True, cfg:dict = None):
 
         '''
         img_dir: Directory containing images and masks (if train=True). e.g. 'data/test/white_bracket'
@@ -18,6 +19,7 @@ class DefectDataset(Dataset):
 
         self.train = train
         self.img_size = img_size
+        self.num_classes = num_classes
         self.images = []
         if self.train:
             self.masks = []
@@ -42,37 +44,37 @@ class DefectDataset(Dataset):
             assert len(self.images) == len(self.masks), "Number of images and masks should be the same in training mode"
 
             self.train_transform = transforms.Compose([transforms.ToImage(),
-                                                        transforms.toDType(torch.float32, scale = True),
+                                                        transforms.ToDtype(torch.float32, scale = True),
                                                         transforms.RandomHorizontalFlip(p = 0.5),
                                                         transforms.RandomVerticalFlip(p = 0.5),
                                                         transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
                                                         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
                                                         transforms.Resize((self.img_size, self.img_size)),
-                                                        transforms.Normalize(mean=[0.485, 0.456, 0.406],\
-                                                                            std=[0.229, 0.224, 0.225]), # Placeholder transforms for training images
+                                                        transforms.Normalize(mean = cfg['data']['mean'],\
+                                                                            std = cfg['data']['mean']), # Placeholder transforms for training images
                                         ]) 
             
 
         self.val_transform = transforms.Compose([
                                                 transforms.ToImage(),
-                                                transforms.DType(torch.float32, scale = True),
+                                                transforms.ToDtype(torch.float32, scale = True),
                                                 transforms.Resize((img_size, img_size)),
-                                                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                                                    std=[0.229, 0.224, 0.225]), # Placeholder transforms for validation images
+                                                transforms.Normalize(mean = cfg['data']['mean'],
+                                                                    std=cfg['data']['mean']), # Placeholder transforms for validation images
                                         ])
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
-        # Load images
+
         img_path = self.images[idx]
         image = Image.open(img_path).convert('RGB')
         
         if self.train:
             mask_path = self.masks[idx]
             if mask_path == 'empty':
-                mask = torch.zeros((image.shape[1], image.shape[2]), dtype=torch.uint8) # Create an empty mask for good images
+                mask = torch.zeros((1, image.shape[1], image.shape[2]), dtype=torch.uint8) # Create an empty mask for good images
             else:
                 mask = Image.open(mask_path).convert('L')
 
@@ -88,14 +90,14 @@ class DefectDataset(Dataset):
             return image
 
 # Unnormalize helper
-def _unnormalize(img: torch.Tensor, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
+def _unnormalize(img: torch.Tensor, mean: tuple = (0.485, 0.456, 0.406), std:tuple = (0.229, 0.224, 0.225)):
     # img: [3,H,W] float tensor
     mean = torch.tensor(mean, device=img.device).view(3, 1, 1)
     std = torch.tensor(std, device=img.device).view(3, 1, 1)
     return (img * std + mean).clamp(0, 1)
 
 @torch.no_grad()
-def visualize_train_samples(dataset: DataLoader, n: int = 8, mean=(0.485,0.456,0.406), std=(0.229,0.224,0.225)):
+def visualize_train_samples(dataset: DataLoader, n: int = 8, mean:tuple = (0.485,0.456,0.406), std:tuple = (0.229,0.224,0.225)):
     """
     Plots a 2×n grid (row1: images, row2: corresponding masks) using first n samples.
     Works with your DefectDataset(train=True).
