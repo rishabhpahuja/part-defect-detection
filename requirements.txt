@@ -1,2 +1,7 @@
 pytest
 torch
+torchvision
+pyyaml
+wandb
+numpy
+Pillow
