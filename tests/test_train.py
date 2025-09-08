@@ -39,7 +39,8 @@ def test_train_updates_params_and_returns_float():
     p0_before = model.conv.weight.detach().clone()
 
     loss = train(data_loader=loader, model=model, criterion=crit,
-        optimizer=opt, device="cpu",
+        optimizer=opt, device="cpu", scaler = torch.amp.GradScaler(),
+        mp_type=torch.float16,
         scheduler=torch.optim.lr_scheduler.StepLR(opt, step_size=1),
         epoch=1, cfg={"wandb":{"use_wandb": False}},
     )
