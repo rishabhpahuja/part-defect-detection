@@ -20,6 +20,7 @@ This repository contains a complete pipeline for training and evaluating a defec
 ├── dataloader.py            # Custom dataset class and data loading
 ├── loss.py                  # Custom loss functions
 ├── inference.py             # Model inference script
+├── preprocess.py            # Sliding window preprocessing for defect-centric patches
 ├── model/
 │   ├── model.py             # U-Net model implementation
 │   └── utils.py             # Model utility functions
@@ -220,6 +221,26 @@ Run the test suite:
 ```bash
 pytest tests/
 ```
+
+## Future Work
+
+### Sliding Window Preprocessing Enhancement
+
+A promising preprocessing methodology to improve model training through defect-centric patch extraction:
+
+#### Methodology Overview
+- **Defect-Focused Cropping**: Extract 480×480 patches centered around defective regions instead of training on full images
+- **Multi-Sample Generation**: Generate 4 crops per defective image with positional offsets to increase training data
+- **Balanced Sampling**: Create 3 random crops from good images to maintain class balance
+- **Resolution Optimization**: Use fixed-size patches for consistent input dimensions and better computational efficiency
+
+#### Expected Benefits
+- **Enhanced Feature Learning**: Higher pixel density for defect regions improves small defect detection
+- **Natural Data Augmentation**: 4x increase in defective samples through systematic spatial variance
+- **Computational Efficiency**: Smaller input tensors enable larger batch sizes and faster training
+- **Class Balance**: Addresses inherent imbalance between defective and good samples
+
+This approach transforms the training paradigm from global scene understanding to focused patch-based learning, potentially improving detection accuracy for small manufacturing defects.
 
 ## License
 
