@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 import wandb
 import yaml
 import os
@@ -8,6 +8,51 @@ from loss import DefectSegmentationLoss
 from model.model import Unet
 from train import train, validate
 from dataloader import DefectDataset, visualize_train_samples
+
+def construct_dataloaders(cfg):
+    '''
+    Constructs training and validation dataloaders
+    Args:
+        cfg: Configuration dictionary containing data parameters
+    '''
+    dataset = DefectDataset(img_dir=cfg['train']['train_dir'], 
+                                  num_classes = cfg['data']['num_classes'], 
+                                  img_size = cfg['data']['img_size'],  
+                                  cfg = cfg)
+    
+    # Visualize some training samples
+    visualize_train_samples(dataset, n = 8, mean = cfg['data']['mean'], std = cfg['data']['std'])
+
+    g = torch.Generator().manual_seed(cfg["seed"])
+    va_frac = 1 - cfg['train']['test_train_split']
+    val_size = int(len(dataset) * va_frac)
+    train_size = len(dataset) - val_size
+    train_idx, val_idx = torch.utils.data.random_split(dataset, 
+                                                               [train_size, val_size],
+                                                               generator=g)
+
+    train_ds_full = DefectDataset(img_dir=cfg["train"]["train_dir"],
+        num_classes = cfg["data"]["num_classes"],
+        img_size = cfg["data"]["img_size"],
+        cfg=cfg,
+    )
+    val_ds_full = DefectDataset(
+        img_dir = cfg["train"]["train_dir"],
+        num_classes = cfg["data"]["num_classes"],
+        img_size = cfg["data"]["img_size"],
+        val = True,
+        cfg = cfg,
+    )
+
+    # 3) Wrap each with Subset using the same split
+    train_dataset = Subset(train_ds_full, train_idx.indices if hasattr(train_idx, "indices") else train_idx)
+    val_dataset   = Subset(val_ds_full,   val_idx.indices   if hasattr(val_idx,   "indices")   else val_idx)
+
+    # 4) Build loaders
+    train_loader = DataLoader(train_dataset, batch_size=cfg["train"]["batch_size"], shuffle=True,  num_workers=cfg["train"]["num_workers"], pin_memory=True)
+    val_loader   = DataLoader(val_dataset,   batch_size=cfg["train"]["batch_size"], shuffle=False, num_workers=cfg["train"]["num_workers"], pin_memory=True)
+
+    return train_loader, val_loader
 
 def main(cfg):
     '''
@@ -27,27 +72,8 @@ def main(cfg):
                                 _wd{cfg['train']['weight_decay']}")
     
     # Create datasets and dataloaders
-    dataset = DefectDataset(img_dir=cfg['train']['train_dir'], 
-                                  num_classes = cfg['data']['num_classes'], 
-                                  img_size = cfg['data']['img_size'], 
-                                  train=True, 
-                                  cfg = cfg)
-    
-    # train validation dataset split
-    val_size = int(len(dataset) * (1 - cfg['train']['test_train_split']))
-    train_size = len(dataset) - val_size
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, 
-                                                               [train_size, val_size])  
-    # Visualize some training samples
-    visualize_train_samples(dataset, n = 8, mean = cfg['data']['mean'], std = cfg['data']['std'])
+    train_loader, val_loader = construct_dataloaders(cfg)
 
-    train_loader = DataLoader(train_dataset, 
-                              batch_size = cfg['train']['batch_size'], 
-                              shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_dataset, 
-                            batch_size=cfg['train']['batch_size'], 
-                            shuffle=False, num_workers=4)
-    
     # Initialize model
     model = Unet(in_channels = 3, num_classes = cfg['data']['num_classes']).to(device)
     
@@ -103,8 +129,7 @@ def main(cfg):
         if cfg['wandb']['use_wandb']:
             wandb.log({'Train Loss': train_loss, 'Validation Loss': val_loss}, step=epoch)
         
-        print(f"Epoch [{epoch+1}/{cfg['train']['epochs']}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
-        print('\n')
+        print(f"Epoch [{epoch+1}/{cfg['train']['epochs']}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}\n")
 
 if __name__ == "__main__":
     # Load configuration from YAML file
@@ -112,3 +137,4 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(file)
     
     main(cfg)
+    # construct_dataloaders(cfg)
