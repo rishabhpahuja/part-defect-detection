@@ -44,11 +44,9 @@ def construct_dataloaders(cfg):
         cfg = cfg,
     )
 
-    # 3) Wrap each with Subset using the same split
     train_dataset = Subset(train_ds_full, train_idx.indices if hasattr(train_idx, "indices") else train_idx)
     val_dataset   = Subset(val_ds_full,   val_idx.indices   if hasattr(val_idx,   "indices")   else val_idx)
 
-    # 4) Build loaders
     train_loader = DataLoader(train_dataset, batch_size=cfg["train"]["batch_size"], shuffle=True,  num_workers=cfg["train"]["num_workers"], pin_memory=True)
     val_loader   = DataLoader(val_dataset,   batch_size=cfg["train"]["batch_size"], shuffle=False, num_workers=cfg["train"]["num_workers"], pin_memory=True)
 
@@ -66,17 +64,22 @@ def main(cfg):
     
     # Initialize WandB if enabled
     if cfg['wandb']['use_wandb']:
-        wandb.init(project = cfg['wandb']['project'], name = f"{cfg['logger_comment']}\
-                                _bs{cfg['train']['batch_size']}_\
-                                lr{cfg['train']['learning_rate']}\
-                                _wd{cfg['train']['weight_decay']}")
+        wandb.init(project = cfg['wandb']['project'], name = f"experiment_{len(os.listdir(cfg['train']['model_save_dir'])) + 1}_\
+                   {cfg['logger_comment']}_bs{cfg['train']['batch_size']}_\
+                   lr{cfg['train']['learning_rate']}_\
+                   wd{cfg['train']['weight_decay']}")
     
     # Create datasets and dataloaders
     train_loader, val_loader = construct_dataloaders(cfg)
 
     # Initialize model
-    model = Unet(in_channels = 3, num_classes = cfg['data']['num_classes']).to(device)
-    
+    if cfg['use_saved_model']:
+        model = Unet(in_channels = 3, num_classes = cfg['data']['num_classes']).to(device)
+        model.load_state_dict(torch.load(cfg['saved_model_path'], map_location=device))
+        print(f"Loaded model weights from {cfg['saved_model_path']}")
+    else:
+        model = Unet(in_channels = 3, num_classes = cfg['data']['num_classes']).to(device)
+
     # Initialize loss function
     criterion = DefectSegmentationLoss(loss_type=cfg['loss']['type'],
                                        loss_directory = cfg['loss']['loss_types']).to(device)
@@ -86,7 +89,7 @@ def main(cfg):
                                   weight_decay= float(cfg['train']['weight_decay']))
     
     # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.9)
 
     # Define scalar for mixed precision training
     scaler = torch.amp.GradScaler()
@@ -111,25 +114,27 @@ def main(cfg):
 
     # Training loop
     least_val_loss = float('inf')
+    max_iou = 0.0
     for epoch in range(cfg['train']['epochs']):
         train_loss = train(data_loader=train_loader, model=model, criterion=criterion,
                            optimizer=optimizer, device=device, mp_type = mp_dtype,
                            scheduler=scheduler, epoch=epoch, cfg=cfg, scaler = scaler,
                            logger=wandb if cfg['wandb']['use_wandb'] else None)
         
-        val_loss = validate(data_loader=val_loader, model=model, criterion=criterion,
+        val_loss, iou = validate(data_loader=val_loader, model=model, criterion=criterion,
                             device=device, cfg=cfg, epoch=epoch, scaler = scaler, mp_type = mp_dtype,
                             logger=wandb if cfg['wandb']['use_wandb'] else None)
         # Save model if it has the least validation loss so far
-        if cfg['train']['save_weights'] and val_loss < least_val_loss:
-            least_val_loss = val_loss
+        if cfg['train']['save_weights'] and iou > max_iou:
+            max_iou = iou
             torch.save(model.state_dict(), os.path.join(experiment_dir, 'best_model.pth'))
             print(f"Saved best model with val loss: {least_val_loss:.4f} at epoch {epoch+1}")
         
         if cfg['wandb']['use_wandb']:
             wandb.log({'Train Loss': train_loss, 'Validation Loss': val_loss}, step=epoch)
-        
-        print(f"Epoch [{epoch+1}/{cfg['train']['epochs']}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}\n")
+
+        print(f"Epoch [{epoch+1}/{cfg['train']['epochs']}], Train Loss: {train_loss:.4f}, "
+              f"Val Loss: {val_loss:.4f}, IoU: {iou:.4f}\n")
 
 if __name__ == "__main__":
     # Load configuration from YAML file
@@ -137,4 +142,3 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(file)
     
     main(cfg)
-    # construct_dataloaders(cfg)

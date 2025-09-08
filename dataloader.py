@@ -48,6 +48,7 @@ class DefectDataset(Dataset):
                                                     transforms.ToImage(),
                                                     transforms.ToDtype(torch.float32, scale = True),
                                                     transforms.Resize((img_size, img_size)),
+                                                    transforms.GaussianBlur(kernel_size=(5, 5)),
                                                     transforms.Normalize(mean = cfg['data']['mean'],
                                                                         std = cfg['data']['std']), 
                                         ])
@@ -55,10 +56,10 @@ class DefectDataset(Dataset):
             assert len(self.images) == len(self.masks), "Number of images and masks should be the same in training mode"
             self.transform = transforms.Compose([transforms.ToImage(),
                                                         transforms.ToDtype(torch.float32, scale = True),
+                                                        # transforms.RandomEqualize(p = 0.5),
                                                         transforms.RandomHorizontalFlip(p = 0.5),
                                                         transforms.RandomVerticalFlip(p = 0.5),
-                                                        transforms.RandomEqualize(p = 0.5),
-                                                        transforms.GaussianBlur(kernel_size=(3, 3)),
+                                                        transforms.GaussianBlur(kernel_size=(5, 5)),
                                                         transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
                                                         # transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
                                                         transforms.Resize((self.img_size, self.img_size)),

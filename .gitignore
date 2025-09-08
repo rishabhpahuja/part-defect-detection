@@ -8,3 +8,5 @@ weights
 bracket_black
 wandb
 *.png
+bracket_black_processed
+output
