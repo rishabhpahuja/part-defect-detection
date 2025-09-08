@@ -60,7 +60,10 @@ def main(cfg):
                                   weight_decay= float(cfg['train']['weight_decay']))
     
     # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
+
+    # Define scalar for mixed precision training
+    scaler = torch.amp.GradScaler()
     
     if cfg['train']['save_weights']:
         # Create directory to save models if it doesn't exists
@@ -77,16 +80,19 @@ def main(cfg):
         os.system(f"cp config.yaml {experiment_dir}/config.yaml")
         print(f"Experiment weights and code will be saved to {experiment_dir}")
 
+    # Mixed Precision data type
+    mp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+
     # Training loop
     least_val_loss = float('inf')
     for epoch in range(cfg['train']['epochs']):
         train_loss = train(data_loader=train_loader, model=model, criterion=criterion,
-                           optimizer=optimizer, device=device,
-                           scheduler=scheduler, epoch=epoch, cfg=cfg,
+                           optimizer=optimizer, device=device, mp_type = mp_dtype,
+                           scheduler=scheduler, epoch=epoch, cfg=cfg, scaler = scaler,
                            logger=wandb if cfg['wandb']['use_wandb'] else None)
         
         val_loss = validate(data_loader=val_loader, model=model, criterion=criterion,
-                            device=device, cfg=cfg, epoch=epoch, 
+                            device=device, cfg=cfg, epoch=epoch, scaler = scaler, mp_type = mp_dtype,
                             logger=wandb if cfg['wandb']['use_wandb'] else None)
         # Save model if it has the least validation loss so far
         if cfg['train']['save_weights'] and val_loss < least_val_loss:
@@ -98,6 +104,7 @@ def main(cfg):
             wandb.log({'Train Loss': train_loss, 'Validation Loss': val_loss}, step=epoch)
         
         print(f"Epoch [{epoch+1}/{cfg['train']['epochs']}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+        print('\n')
 
 if __name__ == "__main__":
     # Load configuration from YAML file

@@ -5,10 +5,11 @@ import wandb
 import numpy as np
 from PIL import Image as PILImage
 from tqdm import tqdm
+from torch.cuda.amp import GradScaler
 
 def train(data_loader: DataLoader, model:torch.nn.Module, 
-            criterion:DefectSegmentationLoss, scheduler,
-            optimizer:torch.optim.Optimizer, device:str,
+            criterion:DefectSegmentationLoss, scheduler, scaler: GradScaler,
+            optimizer:torch.optim.Optimizer, device:str, mp_type: torch.dtype,
             cfg:dict, epoch:int, logger:wandb = None)->float:
 
     '''
@@ -37,10 +38,13 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
         images, masks = batch[0].to(device), batch[1].to(device)
         # import ipdb; ipdb.set_trace()
         optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, masks)
-        loss.backward()
-        optimizer.step()
+        with torch.amp.autocast(dtype = mp_type, device_type=device.type):
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         scheduler.step()
 
         running_loss += loss.item()
@@ -56,7 +60,7 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
 
 def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
             criterion:DefectSegmentationLoss, device:str, cfg: dict,
-            epoch: int)->float:
+            epoch: int, scaler: GradScaler, mp_type: torch.dtype)->float:
 
     '''
     Validates the model for one epoch
@@ -77,14 +81,15 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
     logged_batch = False
 
     pbar = tqdm(data_loader, desc = f"Val Epoch:{epoch}", unit="batch")
+    table = wandb.Table(columns=["epoch", "input", "GT", "pred", "overlay"])
 
     with torch.no_grad():
         for i, batch in enumerate(data_loader):
 
             images, masks = batch[0].to(device), batch[1].to(device)
-
-            outputs = model(images)
-            loss = criterion(outputs, masks)
+            with torch.amp.autocast(dtype = mp_type, device_type=device.type):
+                outputs = model(images)
+                loss = criterion(outputs, masks)
 
             running_loss += loss.item()
             
@@ -98,22 +103,24 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
                     B = images.size(0)
                     n = min(3, B)
 
-                    table = wandb.Table(columns=["input", "pred", "overlay"])
                     for i in range(n):
                         img_np = _denorm_to_uint8(images[i], cfg['data']['mean'], cfg['data']['std'])           # [H,W,3] uint8
                         pmask  = (preds[i, 0].detach().cpu().numpy() > 0).astype(np.uint8) * 255
 
                         img_small = _resize_keep_aspect(img_np,  320, is_mask=False)
+                        gt_small = _resize_keep_aspect(masks[i,0].detach().cpu().numpy().astype(np.uint8)*255, 320, is_mask=True)
                         mask_small = _resize_keep_aspect(pmask,   320, is_mask=True)
                         overlay = _overlay_mask(img_small, mask_small > 0, color=(255, 0, 0), alpha=0.35)
 
                         table.add_data(
+                            epoch,
                             wandb.Image(img_small, caption = f"img {i}"),
+                            wandb.Image(gt_small, caption = f"GT {i}"),
                             wandb.Image(mask_small, caption = f"pred {i}"),
                             wandb.Image(overlay, caption = f"overlay {i}")
                         )
 
-                    logger.log({"epoch": epoch, "val/examples": table}, commit=False)
+                    logger.log({"epoch": epoch, "val/examples": table}, step = epoch, commit=False)
                     logged_batch = True
 
     epoch_loss = running_loss / len(data_loader)
