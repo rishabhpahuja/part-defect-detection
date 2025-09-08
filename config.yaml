@@ -1,23 +1,26 @@
 device: cuda
-logger_comment: baseline
+logger_comment: baseline_with_cropped_images
+seed: 60
+use_saved_model: True
+saved_model_path: ./weights/experiment_9_bs10_lr0.005_wd_1e-5_baseline_without_jitter_blurInVal_kernel5/best_model.pth
 
 data:
-  class_threshold: 0.6
+  class_threshold: 0.7
   num_classes: 1
-  mean: [0.485, 0.456, 0.406]
-  std: [0.229, 0.224, 0.225]
-  img_size: 640
+  mean: [0.436, 0.637, 0.111]
+  std: [0.140, 0.182, 0.0902]
+  img_size: 480
 
 train:
-  train_dir: data/test/white_bracket
-  batch_size: 8
-  test_train_split: 0.95
-  weight_decay: 1e-8
-  batch_size: 32
+  train_dir: bracket_black/test
+  batch_size: 10
+  test_train_split: 0.90
+  weight_decay: 1e-5
   epochs: 150
-  lr: 0.005
+  learning_rate: 0.005
   model_save_dir: weights
   save_weights: True
+  num_workers: 4
 
 loss:
   loss_types : ["DiceLoss"]
@@ -26,5 +29,3 @@ loss:
 wandb:
   use_wandb: True
   project: defect_detection
-
-

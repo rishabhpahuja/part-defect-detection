@@ -1,24 +1,26 @@
 import torch
-from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from torchvision.tv_tensors import Image, Mask
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from torchvision.transforms import v2 as transforms
 import os
+from PIL import Image as PILImage
 
 
 class DefectDataset(Dataset):
     def __init__(self, img_dir: str, num_classes:int = 1,
-                 img_size:int = 640, train:bool = True, 
+                 img_size:int = 640, train:bool = True, val:bool = False,
                  cfg:dict = None):
 
         '''
         img_dir: Directory containing images and masks (if train=True). e.g. 'data/test/white_bracket'
         img_size: Desired size to which images and masks will be resized (img_size x img_size)
-        train: Boolean indicating whether the dataset is for training (True) and validation, False fortesting
+        train: Boolean indicating whether the dataset is for training (True) and validation, False for testing
+        val: Boolean indicating whether the dataset is for validation (True) or training (False)
         '''
 
         self.train = train
+        self.val = val
         self.img_size = img_size
         self.num_classes = num_classes
         self.images = []
@@ -27,42 +29,43 @@ class DefectDataset(Dataset):
 
         for directory in os.listdir(img_dir):
 
-            directory_path = os.path.join(img_dir, directory) # e.g. 'test/white_bracket/hole_defect'
+            directory_path = os.path.join(img_dir, directory) # e.g. 'white_bracket/test/hole_defect'
 
             for image in os.listdir(directory_path):
 
                 if image.endswith('.png'):    
-                    self.images.append(os.path.join(img_dir, directory, image)) # e.g. 'test/white_bracket/hole_defect/img1.png'
+                    self.images.append(os.path.join(img_dir, directory, image)) # e.g. 'white_bracket/test/hole_defect/img1.png'
 
                     if self.train:
                         if directory != 'good': #Since good images don't have masks
-                            self.masks.append(os.path.join(img_dir, 'ground_truth', directory, image)) # e.g. 'test/white_bracket/ground_truth/hole_defect/img1.png'
+                            self.masks.append(os.path.join(img_dir.split('/')[0], 'ground_truth', 
+                                                    directory, image.split('.')[0] + '_mask.png'   )) # e.g. 'white_bracket/test/ground_truth/hole_defect/img1_mask.png'
                         else:
                             self.masks.append('empty') #Placeholder for good images
 
-        if self.train:
-
+        if self.val:
+            self.transform = transforms.Compose([
+                                                    transforms.ToImage(),
+                                                    transforms.ToDtype(torch.float32, scale = True),
+                                                    transforms.Resize((img_size, img_size)),
+                                                    transforms.GaussianBlur(kernel_size=(5, 5)),
+                                                    transforms.Normalize(mean = cfg['data']['mean'],
+                                                                        std = cfg['data']['std']), 
+                                        ])
+        elif self.train:
             assert len(self.images) == len(self.masks), "Number of images and masks should be the same in training mode"
-
-            self.train_transform = transforms.Compose([transforms.ToImage(),
+            self.transform = transforms.Compose([transforms.ToImage(),
                                                         transforms.ToDtype(torch.float32, scale = True),
+                                                        # transforms.RandomEqualize(p = 0.5),
                                                         transforms.RandomHorizontalFlip(p = 0.5),
                                                         transforms.RandomVerticalFlip(p = 0.5),
+                                                        transforms.GaussianBlur(kernel_size=(5, 5)),
                                                         transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-                                                        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                                                        # transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
                                                         transforms.Resize((self.img_size, self.img_size)),
                                                         transforms.Normalize(mean = cfg['data']['mean'],\
-                                                                            std = cfg['data']['mean']), # Placeholder transforms for training images
+                                                                            std = cfg['data']['std']), 
                                         ]) 
-            
-
-        self.val_transform = transforms.Compose([
-                                                transforms.ToImage(),
-                                                transforms.ToDtype(torch.float32, scale = True),
-                                                transforms.Resize((img_size, img_size)),
-                                                transforms.Normalize(mean = cfg['data']['mean'],
-                                                                    std=cfg['data']['mean']), # Placeholder transforms for validation images
-                                        ])
 
     def __len__(self):
         return len(self.images)
@@ -70,35 +73,44 @@ class DefectDataset(Dataset):
     def __getitem__(self, idx):
 
         img_path = self.images[idx]
-        image = Image.open(img_path).convert('RGB')
+        image = PILImage.open(img_path).convert('RGB')
         
         if self.train:
             mask_path = self.masks[idx]
             if mask_path == 'empty':
-                mask = torch.zeros((1, image.shape[1], image.shape[2]), dtype=torch.uint8) # Create an empty mask for good images
+                mask = torch.zeros((1, image.size[1], image.size[0]), dtype=torch.uint8) # Create an empty mask for good images
             else:
-                mask = Image.open(mask_path).convert('L')
+                mask = PILImage.open(mask_path).convert('L')
 
             image, mask = Image(image), Mask(mask)
-            image, mask = self.train_transform(image, mask)
-
+            image, mask = self.transform(image, mask)
+            mask = (mask > 0).to(torch.float32)
+            
             return image, mask
 
         else:
             image = Image(image)
-            image = self.val_transform(image)    
+            image = self.transform(image)    
     
             return image
 
-# Unnormalize helper
-def _unnormalize(img: torch.Tensor, mean: tuple = (0.485, 0.456, 0.406), std:tuple = (0.229, 0.224, 0.225)):
-    # img: [3,H,W] float tensor
-    mean = torch.tensor(mean, device=img.device).view(3, 1, 1)
-    std = torch.tensor(std, device=img.device).view(3, 1, 1)
+def _unnormalize(img: torch.Tensor, mean: tuple, std:tuple):
+    '''
+    Denormalizes an image tensor using the provided mean and std.
+    Args:
+        img: Normalized image tensor of shape [3,H,W] with values in [0,1]
+        mean: Mean used for normalization
+        std: Standard deviation used for normalization
+    Returns:
+        Denormalized image tensor of shape [3,H,W] with values in [0,1]
+    '''
+    mean = torch.tensor(mean, device=img.device).view(-1, 1, 1)
+    std = torch.tensor(std, device=img.device).view(-1, 1, 1)
     return (img * std + mean).clamp(0, 1)
 
 @torch.no_grad()
-def visualize_train_samples(dataset: DataLoader, n: int = 8, mean:tuple = (0.485,0.456,0.406), std:tuple = (0.229,0.224,0.225)):
+def visualize_train_samples(dataset: DefectDataset, n: int = 8, mean:tuple = None, 
+                            std:tuple = None):
     """
     Plots a 2×n grid (row1: images, row2: corresponding masks) using first n samples.
     Works with your DefectDataset(train=True).
@@ -106,9 +118,9 @@ def visualize_train_samples(dataset: DataLoader, n: int = 8, mean:tuple = (0.485
     n = min(n, len(dataset))
     imgs, masks = [], []
     for i in range(n):
-        img, msk, _ = dataset[i]  # [3,H,W], [H,W]
-        imgs.append(_unnormalize(img, mean, std).cpu())
-        masks.append(msk.cpu())
+        img, msk = dataset[-i]  # [3,H,W], [H,W]
+        imgs.append(_unnormalize(img, mean = mean, std = std).cpu())
+        masks.append(msk.squeeze().cpu())
 
     H = 2
     W = n
@@ -128,4 +140,5 @@ def visualize_train_samples(dataset: DataLoader, n: int = 8, mean:tuple = (0.485
         ax1.axis("off")
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig('train_samples.png', dpi=300)
+    plt.close()

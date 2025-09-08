@@ -3,3 +3,10 @@ __pycache__
 .DS_Store
 test.py
 weights
+.amlignore
+.amlignore.amltmp
+bracket_black
+wandb
+*.png
+bracket_black_processed
+output

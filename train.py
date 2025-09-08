@@ -5,10 +5,43 @@ import wandb
 import numpy as np
 from PIL import Image as PILImage
 from tqdm import tqdm
+from torch.cuda.amp import GradScaler
+
+def calculate_iou(pred_mask: torch.Tensor, true_mask: torch.Tensor, threshold: float = 0.5) -> float:
+    """
+    Calculate Intersection over Union (IoU) for binary segmentation masks.
+    
+    Args:
+        pred_mask: Predicted mask tensor of shape [B, 1, H, W] (logits or probabilities)
+        true_mask: Ground truth mask tensor of shape [B, 1, H, W] (binary)
+        threshold: Threshold for converting predictions to binary mask
+    
+    Returns:
+        IoU score as a float
+    """
+    # Convert predictions to binary
+    if pred_mask.max() > 1.0:  # If logits, apply sigmoid
+        pred_binary = (torch.sigmoid(pred_mask) > threshold).float()
+    else:  # If probabilities, just threshold
+        pred_binary = (pred_mask > threshold).float()
+    
+    # Flatten tensors for easier computation
+    pred_flat = pred_binary.view(-1)
+    true_flat = true_mask.view(-1)
+    
+    # Calculate intersection and union
+    intersection = (pred_flat * true_flat).sum()
+    union = pred_flat.sum() + true_flat.sum() - intersection
+    
+    # Avoid division by zero
+    if union == 0:
+        return 1.0
+    
+    return (intersection / union).item()
 
 def train(data_loader: DataLoader, model:torch.nn.Module, 
-            criterion:DefectSegmentationLoss, scheduler,
-            optimizer:torch.optim.Optimizer, device:str,
+            criterion:DefectSegmentationLoss, scheduler, scaler: GradScaler,
+            optimizer:torch.optim.Optimizer, device:str, mp_type: torch.dtype,
             cfg:dict, epoch:int, logger:wandb = None)->float:
 
     '''
@@ -35,12 +68,15 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
     for i, batch in enumerate(pbar):
 
         images, masks = batch[0].to(device), batch[1].to(device)
-
+        # import ipdb; ipdb.set_trace()
         optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, masks)
-        loss.backward()
-        optimizer.step()
+        with torch.amp.autocast(dtype = mp_type, device_type=device.type):
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         scheduler.step()
 
         running_loss += loss.item()
@@ -56,7 +92,7 @@ def train(data_loader: DataLoader, model:torch.nn.Module,
 
 def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
             criterion:DefectSegmentationLoss, device:str, cfg: dict,
-            epoch: int)->float:
+            epoch: int, scaler: GradScaler, mp_type: torch.dtype)->float:
 
     '''
     Validates the model for one epoch
@@ -68,27 +104,38 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
         device: Device to run the validation on (CPU or GPU)
         cfg: Configuration dictionary
         epoch: Current epoch number
+        scaler: Gradient scaler for mixed precision
+        mp_type: Mixed precision data type
     Returns:
-        Average loss for the epoch
+        Average loss for the epoch (IoU is logged to wandb)
     '''
 
     model.eval()
     running_loss = 0.0
+    running_iou = 0.0
     logged_batch = False
 
     pbar = tqdm(data_loader, desc = f"Val Epoch:{epoch}", unit="batch")
+    table = wandb.Table(columns=["epoch", "input", "GT", "pred", "overlay"])
 
     with torch.no_grad():
         for i, batch in enumerate(data_loader):
 
             images, masks = batch[0].to(device), batch[1].to(device)
+            with torch.amp.autocast(dtype = mp_type, device_type=device.type):
+                outputs = model(images)
+                loss = criterion(outputs, masks)
 
-            outputs = model(images)
-            loss = criterion(outputs, masks)
-
-            running_loss += loss.item()
+            # Calculate IoU for this batch
+            batch_iou = calculate_iou(outputs, masks, cfg['data']['class_threshold'])
             
-            pbar.set_postfix({"loss": f"{running_loss/(i+1):.4f}"})
+            running_loss += loss.item()
+            running_iou += batch_iou
+            
+            pbar.set_postfix({
+                "loss": f"{running_loss/(i+1):.4f}",
+                "iou": f"{running_iou/(i+1):.4f}"
+            })
 
             if cfg['wandb']['use_wandb']:
                 # Log a few validation examples from the 1st batch to wandb
@@ -98,30 +145,36 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
                     B = images.size(0)
                     n = min(3, B)
 
-                    table = wandb.Table(columns=["input", "pred", "overlay"])
                     for i in range(n):
-                        img_np = _denorm_to_uint8(images[i], cfg['mean'], cfg['std'])           # [H,W,3] uint8
+                        img_np = _denorm_to_uint8(images[i], cfg['data']['mean'], cfg['data']['std'])           # [H,W,3] uint8
                         pmask  = (preds[i, 0].detach().cpu().numpy() > 0).astype(np.uint8) * 255
 
                         img_small = _resize_keep_aspect(img_np,  320, is_mask=False)
+                        gt_small = _resize_keep_aspect(masks[i,0].detach().cpu().numpy().astype(np.uint8)*255, 320, is_mask=True)
                         mask_small = _resize_keep_aspect(pmask,   320, is_mask=True)
                         overlay = _overlay_mask(img_small, mask_small > 0, color=(255, 0, 0), alpha=0.35)
 
                         table.add_data(
+                            epoch,
                             wandb.Image(img_small, caption = f"img {i}"),
+                            wandb.Image(gt_small, caption = f"GT {i}"),
                             wandb.Image(mask_small, caption = f"pred {i}"),
                             wandb.Image(overlay, caption = f"overlay {i}")
                         )
 
-                        logger.log({"epoch": epoch, "val/examples": table}, commit=False)
-                        logged_batch = True
+                    logger.log({"epoch": epoch, "val/examples": table}, step = epoch, commit=False)
+                    logged_batch = True
 
     epoch_loss = running_loss / len(data_loader)
+    epoch_iou = running_iou / len(data_loader)
 
     if cfg['wandb']['use_wandb']:
-        logger.log({"epoch": epoch, "val/loss": epoch_loss}, commit=False)
+        logger.log({"epoch": epoch, 
+                    "val/loss": epoch_loss,
+                    "val/iou": epoch_iou
+                    }, commit=False)
 
-    return epoch_loss
+    return epoch_loss, epoch_iou
 
 def _denorm_to_uint8(x: torch.Tensor,
                      mean:tuple = (0.485, 0.456, 0.406),
