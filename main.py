@@ -89,7 +89,7 @@ def main(cfg):
                                   weight_decay= float(cfg['train']['weight_decay']))
     
     # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.9)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.85)
 
     # Define scalar for mixed precision training
     scaler = torch.amp.GradScaler()
@@ -127,6 +127,7 @@ def main(cfg):
         # Save model if it has the least validation loss so far
         if cfg['train']['save_weights'] and iou > max_iou:
             max_iou = iou
+            least_val_loss = val_loss
             torch.save(model.state_dict(), os.path.join(experiment_dir, 'best_model.pth'))
             print(f"Saved best model with val loss: {least_val_loss:.4f} at epoch {epoch+1}")
         

@@ -40,7 +40,27 @@ This repository contains a complete pipeline for training and evaluating a defec
 - **WandB Integration**: Experiment tracking and logging
 - **Data Augmentation**: Configurable augmentation pipeline
 - **Automated Model Saving**: Saves best models based on validation loss
+- **Sample Training Dataset Preview**: A sample of the training dataset is saved for quick visualization, allowing you to see how the data looks after preprocessing and augmentation.
 
+### Sample Training Image
+
+Below is a sample image from the training dataset after preprocessing and augmentation:
+
+![Sample Training Image](docs/train_samples_cropped.png)
+
+## Preprocessing
+
+- **Reflection Removal**: Before cropping, the script automatically detects and removes reflections (glare) from part images using an inpainting (infilling) technique. This helps reduce the impact of lighting artifacts on model training.
+
+### Effect of Glare Removal
+
+Below is a comparison showing the effect of glare removal using inpainting:
+
+| **Before (With Glare)** | **After (Glare Removed)** |
+|:-----------------------:|:------------------------:|
+| ![Before Glare Removal](docs/014.png) | ![After Glare Removal](docs/014_fixed.jpg) |
+
+This preprocessing step improves the quality of training data by minimizing the influence of lighting artifacts.
 ## Requirements
 
 Install the required dependencies:
@@ -224,24 +244,17 @@ pytest tests/
 
 ## Future Work
 
-### Sliding Window Preprocessing Enhancement
+### 1. Experiment with Different Loss Functions
 
-A promising preprocessing methodology to improve model training through defect-centric patch extraction:
+- Explore the impact of various loss functions (e.g., BCE, Focal Loss, Tversky Loss, Combo Loss) on segmentation performance, especially for class-imbalanced datasets.
 
-#### Methodology Overview
-- **Defect-Focused Cropping**: Extract 480×480 patches centered around defective regions instead of training on full images
-- **Multi-Sample Generation**: Generate 4 crops per defective image with positional offsets to increase training data
-- **Balanced Sampling**: Create 3 random crops from good images to maintain class balance
-- **Resolution Optimization**: Use fixed-size patches for consistent input dimensions and better computational efficiency
+### 2. Anomaly Detection Experiments
 
-#### Expected Benefits
-- **Enhanced Feature Learning**: Higher pixel density for defect regions improves small defect detection
-- **Natural Data Augmentation**: 4x increase in defective samples through systematic spatial variance
-- **Computational Efficiency**: Smaller input tensors enable larger batch sizes and faster training
-- **Class Balance**: Addresses inherent imbalance between defective and good samples
+- Investigate unsupervised and semi-supervised anomaly detection approaches using:
+  - **Autoencoders**: Train autoencoders to reconstruct non-defective images and use reconstruction error to identify defects.
+  - **Variational Autoencoders (VAEs)**: Use VAEs for probabilistic modeling of good parts and detect anomalies based on likelihood.
+  - **Diffusion Models**: Experiment with generative diffusion models for robust anomaly detection and segmentation.
 
-This approach transforms the training paradigm from global scene understanding to focused patch-based learning, potentially improving detection accuracy for small manufacturing defects.
+### 3. Advanced Glare Removal
 
-## License
-
-This project is licensed under the terms specified in the LICENSE file.
+- Experiment with additional preprocessing methodologies to further improve glare and reflection removal, enhancing the quality of training data and model robustness.
