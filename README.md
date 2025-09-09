@@ -244,24 +244,17 @@ pytest tests/
 
 ## Future Work
 
-### Sliding Window Preprocessing Enhancement
+### 1. Experiment with Different Loss Functions
 
-A promising preprocessing methodology to improve model training through defect-centric patch extraction:
+- Explore the impact of various loss functions (e.g., BCE, Focal Loss, Tversky Loss, Combo Loss) on segmentation performance, especially for class-imbalanced datasets.
 
-#### Methodology Overview
-- **Defect-Focused Cropping**: Extract 480×480 patches centered around defective regions instead of training on full images
-- **Multi-Sample Generation**: Generate 4 crops per defective image with positional offsets to increase training data
-- **Balanced Sampling**: Create 3 random crops from good images to maintain class balance
-- **Resolution Optimization**: Use fixed-size patches for consistent input dimensions and better computational efficiency
+### 2. Anomaly Detection Experiments
 
-#### Expected Benefits
-- **Enhanced Feature Learning**: Higher pixel density for defect regions improves small defect detection
-- **Natural Data Augmentation**: 4x increase in defective samples through systematic spatial variance
-- **Computational Efficiency**: Smaller input tensors enable larger batch sizes and faster training
-- **Class Balance**: Addresses inherent imbalance between defective and good samples
+- Investigate unsupervised and semi-supervised anomaly detection approaches using:
+  - **Autoencoders**: Train autoencoders to reconstruct non-defective images and use reconstruction error to identify defects.
+  - **Variational Autoencoders (VAEs)**: Use VAEs for probabilistic modeling of good parts and detect anomalies based on likelihood.
+  - **Diffusion Models**: Experiment with generative diffusion models for robust anomaly detection and segmentation.
 
-This approach transforms the training paradigm from global scene understanding to focused patch-based learning, potentially improving detection accuracy for small manufacturing defects.
+### 3. Advanced Glare Removal
 
-## License
-
-This project is licensed under the terms specified in the LICENSE file.
+- Experiment with additional preprocessing methodologies to further improve glare and reflection removal, enhancing the quality of training data and model robustness.
