@@ -40,7 +40,27 @@ This repository contains a complete pipeline for training and evaluating a defec
 - **WandB Integration**: Experiment tracking and logging
 - **Data Augmentation**: Configurable augmentation pipeline
 - **Automated Model Saving**: Saves best models based on validation loss
+- **Sample Training Dataset Preview**: A sample of the training dataset is saved for quick visualization, allowing you to see how the data looks after preprocessing and augmentation.
 
+### Sample Training Image
+
+Below is a sample image from the training dataset after preprocessing and augmentation:
+
+![Sample Training Image](docs/train_samples_cropped.png)
+
+## Preprocessing
+
+- **Reflection Removal**: Before cropping, the script automatically detects and removes reflections (glare) from part images using an inpainting (infilling) technique. This helps reduce the impact of lighting artifacts on model training.
+
+### Effect of Glare Removal
+
+Below is a comparison showing the effect of glare removal using inpainting:
+
+| **Before (With Glare)** | **After (Glare Removed)** |
+|:-----------------------:|:------------------------:|
+| ![Before Glare Removal](docs/014.png) | ![After Glare Removal](docs/014_fixed.jpg) |
+
+This preprocessing step improves the quality of training data by minimizing the influence of lighting artifacts.
 ## Requirements
 
 Install the required dependencies:
