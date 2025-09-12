@@ -1,29 +1,29 @@
 device: cuda
-logger_comment: baseline_with_cropped_images
+logger_comment: baseline_cropped_images_IOULoss_fixed_IOU
 seed: 60
 use_saved_model: True
-saved_model_path: ./weights/experiment_9_bs10_lr0.005_wd_1e-5_baseline_without_jitter_blurInVal_kernel5/best_model.pth
+saved_model_path: weights/experiment_22_bs10_lr0.0009_wd_1e-5_baseline_cropped_images_IOULoss_fixed_IOU/best_model.pth
 
 data:
-  class_threshold: 0.7
-  num_classes: 1
+  class_threshold: 0.3
+  num_classes: 2
   mean: [0.436, 0.637, 0.111]
   std: [0.140, 0.182, 0.0902]
-  img_size: 480
+  img_size: 512
 
 train:
-  train_dir: bracket_black/test
+  train_dir: bracket_black_cropped/test
   batch_size: 10
   test_train_split: 0.90
   weight_decay: 1e-5
   epochs: 150
-  learning_rate: 0.005
+  learning_rate: 0.0009
   model_save_dir: weights
   save_weights: True
   num_workers: 4
 
 loss:
-  loss_types : ["DiceLoss"]
+  loss_types : ["DiceLoss", "CELoss", "IoULoss"]
   type: DiceLoss
 
 wandb:

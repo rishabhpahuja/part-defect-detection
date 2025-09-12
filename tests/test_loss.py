@@ -10,12 +10,12 @@ def make_binary_batch(B = 2, H = 32, W = 32):
     Half-left foreground mask, logits_good aligns with targets, logits_bad inverts them minus a scalar.
     """
     targets = torch.zeros(B, cfg['data']['num_classes'], H, W)
-    targets[:, :, : W // 2] = 1.0
+    targets[:, 1, : W // 2] = 1.0
 
     logits_good = torch.full((B, cfg['data']['num_classes'], H, W), -20.0)
-    logits_good[:, :, :, : W // 2] = 20.0
+    logits_good[:, 1, :, : W // 2] = 20.0
 
-    logits_bad = -logits_good - 5.0
+    logits_bad = -logits_good - 25.0
     return logits_good, logits_bad, targets
 
 @pytest.mark.parametrize("loss_type", cfg['loss']['loss_types'])
