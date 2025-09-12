@@ -20,24 +20,17 @@ def calculate_iou(pred_mask: torch.Tensor, true_mask: torch.Tensor, threshold: f
         IoU score as a float
     """
     # Convert predictions to binary
-    if pred_mask.max() > 1.0:  # If logits, apply sigmoid
-        pred_binary = (torch.sigmoid(pred_mask) > threshold).float()
-    else:  # If probabilities, just threshold
-        pred_binary = (pred_mask > threshold).float()
-    
+    pred_binary = (torch.sigmoid(pred_mask) > threshold)
+
     # Flatten tensors for easier computation
-    pred_flat = pred_binary.view(-1)
-    true_flat = true_mask.view(-1)
-    
-    # Calculate intersection and union
-    intersection = (pred_flat * true_flat).sum()
-    union = pred_flat.sum() + true_flat.sum() - intersection
+    intersection = (pred_binary * true_mask).sum(dim=(1, 2))
+    union = pred_binary.sum(dim=(1, 2)) + true_mask.sum(dim=(1, 2)) - intersection
     
     # Avoid division by zero
-    if union == 0:
+    if union.mean(dtype = torch.float32).item() == 0:
         return 1.0
     
-    return (intersection / union).item()
+    return (intersection / union).mean().item()
 
 def train(data_loader: DataLoader, model:torch.nn.Module, 
             criterion:DefectSegmentationLoss, scheduler, scaler: GradScaler,
@@ -127,8 +120,8 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
                 loss = criterion(outputs, masks)
 
             # Calculate IoU for this batch
-            batch_iou = calculate_iou(outputs, masks, cfg['data']['class_threshold'])
-            
+            batch_iou = calculate_iou(outputs[:,1], masks[:,1], cfg['data']['class_threshold'])
+
             running_loss += loss.item()
             running_iou += batch_iou
             
@@ -140,17 +133,17 @@ def validate(data_loader: DataLoader, model:torch.nn.Module, logger:wandb,
             if cfg['wandb']['use_wandb']:
                 # Log a few validation examples from the 1st batch to wandb
                 if not logged_batch:
-                    probs = torch.sigmoid(outputs)                 
+                    # import ipdb; ipdb.set_trace()
+                    probs = torch.softmax(outputs, dim=1)
                     preds = (probs > cfg['data']['class_threshold']).float()
                     B = images.size(0)
-                    n = min(3, B)
+                    n = min(5, B)
 
                     for i in range(n):
                         img_np = _denorm_to_uint8(images[i], cfg['data']['mean'], cfg['data']['std'])           # [H,W,3] uint8
-                        pmask  = (preds[i, 0].detach().cpu().numpy() > 0).astype(np.uint8) * 255
-
+                        pmask  = (preds[i, 1].detach().cpu().numpy() > 0).astype(np.uint8) * 255
                         img_small = _resize_keep_aspect(img_np,  320, is_mask=False)
-                        gt_small = _resize_keep_aspect(masks[i,0].detach().cpu().numpy().astype(np.uint8)*255, 320, is_mask=True)
+                        gt_small = _resize_keep_aspect(masks[i,1].detach().cpu().numpy().astype(np.uint8)*255, 320, is_mask=True)
                         mask_small = _resize_keep_aspect(pmask,   320, is_mask=True)
                         overlay = _overlay_mask(img_small, mask_small > 0, color=(255, 0, 0), alpha=0.35)
 
