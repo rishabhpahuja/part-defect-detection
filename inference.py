@@ -389,7 +389,6 @@ def run_crop_merge_inference(image_path: str, config_path: str, model_path: str 
         'crop_predictions': crop_predictions,
         'crop_coordinates': crop_coords,
         'has_defects': has_defects,
-        'defect_percentage': defect_percentage,
         'original_shape': original_shape,
         'model_path': model_path,
         'config': cfg
